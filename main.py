@@ -151,11 +151,21 @@ class CustomImageClassifier:
         predictions = softmax.predict(self.X_test_flat)
         self.evaluate_model(self.y_test, predictions, "Softmax Regression")
 
+    def run_knn_experiment(self, k=3):
+        """Run KNN classification."""
+        print(f"\nRunning KNN Classification with k={k}...")
+        knn = KNNClassifier(k=k)
+        knn.fit(self.X_train_flat, self.y_train)
+
+        predictions = knn.predict(self.X_test_flat)
+        self.evaluate_model(self.y_test, predictions, f"KNN (k={k})")
+
     def run_all_experiments(self):
         """Run all experiments."""
-        self.run_logistic_regression()
+        """self.run_logistic_regression()
         self.run_softmax_regression()
-        self.run_svm_experiment()
+        self.run_svm_experiment()"""
+        self.run_knn_experiment(k=3)  # Example with k=3
 
 
 class LogisticRegression:
@@ -231,6 +241,25 @@ class SoftmaxRegression:
     def predict(self, X):
         z = np.dot(X, self.weights) + self.bias
         return np.argmax(self.softmax(z), axis=1)
+
+
+class KNNClassifier:
+    def __init__(self, k=3):
+        self.k = k
+
+    def fit(self, X, y):
+        self.X_train = X
+        self.y_train = y
+
+    def predict(self, X):
+        predictions = []
+        for x in tqdm(X, desc="Predicting with KNN"):
+            distances = np.sqrt(np.sum((self.X_train - x) ** 2, axis=1))
+            k_indices = np.argsort(distances)[:self.k]
+            k_nearest_labels = self.y_train[k_indices]
+            prediction = np.bincount(k_nearest_labels).argmax()
+            predictions.append(prediction)
+        return np.array(predictions)
 
 
 if __name__ == "__main__":
