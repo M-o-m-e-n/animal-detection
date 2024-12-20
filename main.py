@@ -1,3 +1,7 @@
+import cv2
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.optimizers import Adam
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,7 +11,6 @@ from sklearn.svm import SVC
 from tensorflow.keras.utils import load_img, img_to_array
 from tqdm import tqdm
 import seaborn as sns
-
 
 class CustomImageClassifier:
     def __init__(self, data_dir, class_names, max_samples_per_class=None):
@@ -160,106 +163,60 @@ class CustomImageClassifier:
         predictions = knn.predict(self.X_test_flat)
         self.evaluate_model(self.y_test, predictions, f"KNN (k={k})")
 
+    def apply_custom_processing(self, image):
+        """Apply custom image processing techniques."""
+        # Convert to grayscale
+        grayscale = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+
+        # Apply histogram equalization
+        equalized = cv2.equalizeHist(grayscale)
+
+        # Edge detection
+        edges = cv2.Canny(equalized, 100, 200)
+
+        return edges
+
+    def run_neural_network(self):
+        """Run a simple feed-forward neural network."""
+        print("\nRunning Feed-Forward Neural Network...")
+        model = Sequential([
+            Dense(128, activation='relu', input_shape=(self.X_train_flat.shape[1],)),
+            Dropout(0.5),
+            Dense(self.num_classes, activation='softmax')
+        ])
+        model.compile(optimizer=Adam(learning_rate=0.001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        model.fit(self.X_train_flat, self.y_train, epochs=10, batch_size=32, validation_split=0.2)
+        predictions = np.argmax(model.predict(self.X_test_flat), axis=1)
+        self.evaluate_model(self.y_test, predictions, "Feed-Forward Neural Network")
+
+    def run_cnn(self):
+        """Run a Convolutional Neural Network (CNN)."""
+        print("\nRunning Convolutional Neural Network...")
+        model = Sequential([
+            Conv2D(32, (3, 3), activation='relu', input_shape=self.X_train.shape[1:]),
+            MaxPooling2D(pool_size=(2, 2)),
+            Dropout(0.25),
+            Conv2D(64, (3, 3), activation='relu'),
+            MaxPooling2D(pool_size=(2, 2)),
+            Dropout(0.25),
+            Flatten(),
+            Dense(128, activation='relu'),
+            Dropout(0.5),
+            Dense(self.num_classes, activation='softmax')
+        ])
+        model.compile(optimizer=Adam(learning_rate=0.001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        model.fit(self.X_train, self.y_train, epochs=10, batch_size=32, validation_split=0.2)
+        predictions = np.argmax(model.predict(self.X_test), axis=1)
+        self.evaluate_model(self.y_test, predictions, "Convolutional Neural Network")
+
     def run_all_experiments(self):
         """Run all experiments."""
-        """self.run_logistic_regression()
+        self.run_logistic_regression()
         self.run_softmax_regression()
-        self.run_svm_experiment()"""
-        self.run_knn_experiment(k=3)  # Example with k=3
-
-
-class LogisticRegression:
-    def __init__(self, learning_rate=0.1, num_iterations=438):
-        self.learning_rate = learning_rate
-        self.num_iterations = num_iterations
-
-    def sigmoid(self, z):
-        return 1 / (1 + np.exp(-z))
-
-    def fit(self, X, y, binary_classes=(0, 1)):
-        # Filter data for binary classification
-        mask = np.isin(y, binary_classes)
-        X = X[mask]
-        y = y[mask]
-        y = (y == binary_classes[1]).astype(int)
-
-        self.weights = np.zeros(X.shape[1])
-        self.bias = 0
-
-        for _ in range(self.num_iterations):
-            # Forward pass
-            z = np.dot(X, self.weights) + self.bias
-            predictions = self.sigmoid(z)
-
-            # Backward pass
-            dz = predictions - y
-            dw = np.dot(X.T, dz) / len(y)
-            db = np.sum(dz) / len(y)
-
-            # Update weights and bias
-            self.weights -= self.learning_rate * dw
-            self.bias -= self.learning_rate * db
-
-    def predict(self, X):
-        z = np.dot(X, self.weights) + self.bias
-        predictions = self.sigmoid(z)
-        return (predictions >= 0.5).astype(int)
-
-
-class SoftmaxRegression:
-    def __init__(self, learning_rate=0.1, num_iterations=438):
-        self.learning_rate = learning_rate
-        self.num_iterations = num_iterations
-
-    def softmax(self, z):
-        exp = np.exp(z - np.max(z, axis=1, keepdims=True))
-        return exp / np.sum(exp, axis=1, keepdims=True)
-
-    def fit(self, X, y):
-        num_classes = len(np.unique(y))
-        self.weights = np.zeros((X.shape[1], num_classes))
-        self.bias = np.zeros(num_classes)
-
-        # One-hot encode labels
-        y_onehot = np.zeros((len(y), num_classes))
-        y_onehot[np.arange(len(y)), y] = 1
-
-        for _ in range(self.num_iterations):
-            # Forward pass
-            z = np.dot(X, self.weights) + self.bias
-            predictions = self.softmax(z)
-
-            # Backward pass
-            error = predictions - y_onehot
-            dw = np.dot(X.T, error) / len(y)
-            db = np.sum(error, axis=0) / len(y)
-
-            # Update weights and bias
-            self.weights -= self.learning_rate * dw
-            self.bias -= self.learning_rate * db
-
-    def predict(self, X):
-        z = np.dot(X, self.weights) + self.bias
-        return np.argmax(self.softmax(z), axis=1)
-
-
-class KNNClassifier:
-    def __init__(self, k=3):
-        self.k = k
-
-    def fit(self, X, y):
-        self.X_train = X
-        self.y_train = y
-
-    def predict(self, X):
-        predictions = []
-        for x in tqdm(X, desc="Predicting with KNN"):
-            distances = np.sqrt(np.sum((self.X_train - x) ** 2, axis=1))
-            k_indices = np.argsort(distances)[:self.k]
-            k_nearest_labels = self.y_train[k_indices]
-            prediction = np.bincount(k_nearest_labels).argmax()
-            predictions.append(prediction)
-        return np.array(predictions)
+        self.run_svm_experiment()
+        self.run_knn_experiment(k=3)
+        self.run_neural_network()
+        self.run_cnn()
 
 
 if __name__ == "__main__":
